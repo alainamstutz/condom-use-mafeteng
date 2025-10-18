@@ -1,0 +1,394 @@
+---
+title: "Condom Use Among Men at Mafeteng Hospital, Lesotho"
+author: "Lefosa Molefe, Mashea Amelia & Amstutz Alain"
+format:
+  html:
+    toc: true
+    toc-float: true
+    toc-depth: 4 # show up to 4 sub-levels in md table of content
+    code-fold: true
+    keep-md: true
+  pdf:
+    toc: true
+editor: visual
+---
+
+*Department of Nursing, Faculty of Health Sciences, National University of Lesotho*
+
+**Packages**
+
+```{r}
+#| message: false
+#| warning: false
+req_pkgs <- c("readxl",
+              "dplyr",
+              "tidyr",
+              "here",
+              "ggplot2",
+              "gtsummary",
+              "forcats",
+              "broom"
+)
+install_if_missing <- function(pkgs){
+  for(p in pkgs){
+    if(!requireNamespace(p, quietly=TRUE)){
+      install.packages(p, repos="https://cloud.r-project.org")
+    }
+    library(p, character.only=TRUE)
+  }
+}
+install_if_missing(req_pkgs)
+```
+
+# **(1) Variable formatting and main outcome**
+
+Main outcome Condom use & Reasons for non-use
+
+```{r}
+# Import
+df <- read_excel(here("df.xlsx"))
+
+# Remove row with "#NULL!"
+df <- df %>%
+  filter(!if_any(everything(), ~ . == "#NULL!"))
+
+# Numeric continuous variables
+numeric_vars <- c("Age", "Duration", "Age_Difference", "Duration_Dating")
+
+# Ordinal Likert-scale variables (1–5), others convert to factor for now
+likert_vars <- c(
+  "Lack_Trust", "Enhance_Pleasure", "Decrease_Pleasure", "Beautiful_Girls",
+  "No_love", "Suggest_Use", "Morally_wrong", "Messy", "Unprotected_sex",
+  "Heightened_excitement", "Responsible_sexual_behaviour", "Women_perception",
+  "Embarrassed_Purchasing", "Confident_putting_on", "Regret_Later",
+  "Religion_and_Culture", "Less_masculine", "Woman_Resposibility", "Promiscuity",
+  "Taboo", "Personal_Choice", "Prevent_STIs", "Effective_Contraception", "Easy_Use",
+  "Expensive", "Easily_Available", "Poor_Quality", "Comfortable", "Dry_out",
+  "Breakage", "Bad_smell"
+)
+
+# Convert variables to appropriate types
+df <- df %>%
+  mutate(
+    # Convert numeric vars to numeric
+    across(all_of(numeric_vars), ~ as.numeric(.)),
+
+    # Convert Likert vars to ordered factors
+    across(all_of(likert_vars), ~ factor(as.numeric(.), 
+                                         levels = 1:5, 
+                                         ordered = TRUE)),
+
+    # Everything else becomes unordered factor
+    across(-c(all_of(numeric_vars), all_of(likert_vars)), as.factor)
+  )
+
+# Outcome variable and reasons for non-use
+df <- df %>%
+  mutate(
+    Condom_use = as.numeric(Condom_use),
+    Disuse = as.numeric(Disuse)
+  ) %>%
+  mutate(
+    Condom_use = factor(
+      Condom_use,
+      levels = c(1, 2),
+      labels = c("Used Condom", "Did Not Use Condom")
+    ),
+    Disuse = factor(
+      Disuse,
+      levels = 1:8,
+      labels = c(
+        "Alcohol",
+        "Use condoms?",
+        "Trust partner",
+        "Uncomfortable",
+        "Did not think much about",
+        "Unavailable",
+        "Decrease pleasure",
+        "Never used a condom"
+      )
+    )
+  )
+
+# Prepare plot data incl. percentages
+cds_use <- df %>%
+  count(Condom_use) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  arrange(desc(n))
+reason_counts <- df %>%
+  filter(Condom_use == "Did Not Use Condom") %>%
+  count(Disuse) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  arrange(desc(n))
+
+# Plot: Condom use
+ggplot(cds_use, aes(x = reorder(Condom_use, percent), y = percent)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n),           # counts inside bar
+            hjust = 1.5, color = "white", size = 3.5) +  # moved left
+  geom_text(aes(y = percent + 3,      # percentages outside bar
+                label = paste0(round(percent, 1), "%")), 
+            hjust = 0, size = 3.5) +
+  coord_flip() +
+  labs(
+    title = "Condom Use",
+    subtitle = "Among all respondents (n=93)",
+    x = "",
+    y = "Percentage displayed (count in white)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray40")
+  ) +
+  expand_limits(y = max(cds_use$percent) * 1.2)
+
+# Plot: Reasons for not using condoms
+ggplot(reason_counts, aes(x = reorder(Disuse, percent), y = percent)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n),           # counts inside bar
+            hjust = 1.5, color = "white", size = 3.5) +  # moved left
+  geom_text(aes(y = percent + 3,      # percentages outside bar
+                label = paste0(round(percent, 1), "%")), 
+            hjust = 0, size = 3.5) +
+  coord_flip() +
+  labs(
+    title = "Reasons for Not Using Condoms",
+    subtitle = "Among respondents who did not use condoms (n=53)",
+    x = "",
+    y = "Percentage displayed (count in white)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray40")
+  ) +
+  expand_limits(y = max(reason_counts$percent) * 1.2)
+
+```
+
+# **(2) Baseline table**
+
+-- Add variable levels ––
+
+```{r}
+# Baseline characteristics, keeping Condom_use for stratification
+baseline_vars <- df %>%
+  select(Age, Marriage, Duration, Relationship, Age_Difference,
+         Duration_Dating, Qualification, Income, Religion, Condom_use)
+
+tbl_baseline <- tbl_summary(
+  data = baseline_vars,
+  by = Condom_use,
+  type = list(
+    Age ~ "continuous",
+    Duration ~ "continuous",
+    Age_Difference ~ "continuous",
+    Duration_Dating ~ "continuous"
+  ),
+  statistic = list(
+    all_continuous() ~ "{mean} ({sd})",
+    all_categorical() ~ "{n} ({p}%)"
+  ),
+  missing = "no"
+) %>%
+  add_overall() %>%
+  bold_labels() %>%
+  modify_header(label = "**Variable**") %>%
+  modify_caption("**Baseline Table Stratified by Condom Use**")
+
+tbl_baseline
+```
+
+# **(3) Personal Barriers re Condom Use**
+
+-- Add variable levels ––
+
+```{r, fig.width=12, fig.height=8}
+#| message: false
+#| warning: false
+
+likert_vars <- c(
+  "Lack_Trust", "Decrease_Pleasure", "Beautiful_Girls", "No_love",
+  "Morally_wrong", "Messy", "Unprotected_sex", "Heightened_excitement",
+  "Responsible_sexual_behaviour", "Women_perception", "Embarrassed_Purchasing"
+)
+
+# Drop rows with NA
+df_likert <- df %>%
+  select(all_of(likert_vars)) %>%
+  drop_na()
+
+# Reshape data
+likert_long <- df_likert %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Response") %>%
+  mutate(Response = as.numeric(as.character(Response))) %>%
+  mutate(
+    Direction = case_when(
+      Response %in% c(1,2) ~ "Disagree",
+      Response == 3 ~ "Neutral",
+      Response %in% c(4,5) ~ "Agree"
+    ),
+    ResponseLabel = case_when(
+      Response == 1 ~ "Strongly Disagree",
+      Response == 2 ~ "Disagree",
+      Response == 3 ~ "Neutral",
+      Response == 4 ~ "Agree",
+      Response == 5 ~ "Strongly Agree"
+    )
+  )
+
+# Percentages
+likert_perc <- likert_long %>%
+  group_by(Variable, ResponseLabel, Direction) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Variable) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  ungroup()
+
+# Diverging percentages
+likert_perc <- likert_perc %>%
+  mutate(percent_diverge = case_when(
+    Direction == "Disagree" ~ -percent,
+    Direction == "Agree" ~ percent,
+    TRUE ~ 0
+  ))
+
+# Drop unused factor levels for plotting
+likert_perc$ResponseLabel <- droplevels(factor(likert_perc$ResponseLabel))
+likert_perc$Variable <- fct_rev(factor(likert_perc$Variable))
+
+# Factor order for fill
+likert_perc$ResponseLabel <- factor(
+  likert_perc$ResponseLabel,
+  levels = c("Strongly Disagree","Disagree","Agree","Strongly Agree")
+)
+
+# Max agree for neutral bar offset
+max_agree <- max(likert_perc$percent_diverge[likert_perc$Direction=="Agree"])
+neutral_offset <- max_agree + 26
+
+# Dynamic x-axis limits
+x_min <- floor(min(likert_perc$percent_diverge[likert_perc$Direction != "Neutral"]) / 10) * 10
+neutral_max <- max(likert_perc$percent[likert_perc$Direction == "Neutral"])
+x_max <- ceiling((neutral_offset + neutral_max) / 10) * 10
+
+# Subset for diverging bars
+likert_perc_div <- subset(likert_perc, Direction != "Neutral")
+likert_perc_div$ResponseLabel <- factor(
+  likert_perc_div$ResponseLabel,
+  levels = c("Strongly Disagree","Disagree","Agree","Strongly Agree")
+)
+likert_perc_div$Variable <- droplevels(likert_perc_div$Variable)
+
+# Subset for neutral bars with percent > 0
+neutral_data <- subset(likert_perc, Direction == "Neutral" & percent > 0)
+neutral_data$Variable <- droplevels(neutral_data$Variable)
+
+# Plot
+ggplot() +
+  # Diverging bars
+  geom_col(
+    data = likert_perc_div,
+    aes(x = percent_diverge, y = Variable, fill = ResponseLabel),
+    width = 0.7
+  ) +
+  # Neutral bars as thin grey rectangles
+  geom_rect(
+    data = neutral_data,
+    aes(
+      xmin = neutral_offset,
+      xmax = neutral_offset + percent,
+      ymin = as.numeric(Variable) - 0.3,
+      ymax = as.numeric(Variable) + 0.3
+    ),
+    fill = "#f0f0f0"
+  ) +
+  # Neutral labels
+  geom_text(
+    data = neutral_data,
+    aes(
+      x = neutral_offset + percent + 1,
+      y = as.numeric(Variable),
+      label = paste0(round(percent,1),"%")
+    ),
+    hjust = 0,
+    size = 3
+  ) +
+  # Colors for diverging bars
+  scale_fill_manual(
+    values = c(
+      "Strongly Disagree" = "#d73027",
+      "Disagree" = "#fc8d59",
+      "Agree" = "#91cf60",
+      "Strongly Agree" = "#1a9850"
+    )
+  ) +
+  # X-axis
+  scale_x_continuous(
+    labels = abs,
+    breaks = seq(x_min, x_max, 10),
+    limits = c(x_min, x_max)
+  ) +
+  labs(
+    x = "Percentage",
+    y = "",
+    fill = "Response",
+    title = "Personal Barriers to Condom Utilization",
+    subtitle = "Neutrals displayed as separate grey bars"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.y = element_text(face = "bold"),
+    legend.position = "bottom",
+    panel.grid.major.x = element_line(color = "gray80", size = 0.3),
+    panel.grid.minor.x = element_line(color = "gray90", size = 0.2),
+    plot.subtitle = element_text(size = 11, color = "gray50") 
+  )
+
+```
+
+# **(4) Personal Barriers on Condom use**
+
+-- Add variable levels ––
+
+```{r}
+# Convert Likert factors to numeric and calculate average barrier score
+df_numeric <- df %>%
+  mutate(across(all_of(likert_vars), ~ as.numeric(as.character(.)))) %>%
+  rowwise() %>%
+  mutate(
+    Barrier_Score = mean(c_across(all_of(likert_vars)), na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Outcome
+df_numeric$Condom_use <- factor(df_numeric$Condom_use,
+                                levels = c("Used Condom", "Did Not Use Condom"))
+
+# Logistic regression
+model_total <- glm(
+  Condom_use ~ Barrier_Score,
+  data = df_numeric,
+  family = binomial
+)
+
+# Output
+tbl_1 <- model_total %>%
+  tbl_regression(
+    intercept = TRUE,
+    estimate_fun = function(x) style_sigfig(x, digits = 4),
+    label = list(Barrier_Score ~ "Average Barrier Score (1–5)"),
+    tidy_fun = broom.helpers::tidy_parameters,
+    exponentiate = TRUE   # show OR instead of log-odds
+  ) %>%
+  modify_caption("Association of Average Barrier Score with Condom Use") %>%
+  modify_column_hide(columns = "p.value")
+tbl_1
+
+ggplot(df_numeric, aes(x = Condom_use, y = Barrier_Score, fill = Condom_use)) +
+  geom_boxplot() +
+  labs(x = "Condom Use", y = "Average Barrier Score") +
+  theme_minimal()
+
+```
